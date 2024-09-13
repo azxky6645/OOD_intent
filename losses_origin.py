@@ -33,7 +33,7 @@ def get_angle(i, j):
     return angle
 
 class Proxy_Anchor_org(nn.Module):
-    def __init__(self, label_emb, n_classes, hidden_size, alpha=64): #n_classes: known + unknown
+    def __init__(self, label_emb, n_classes, hidden_size, version, alpha=64): #n_classes: known + unknown
         torch.nn.Module.__init__(self)
         # Proxy Anchor Initialization
         if label_emb == None:
@@ -44,7 +44,9 @@ class Proxy_Anchor_org(nn.Module):
 
         self.n_classes = n_classes
         self.hidden_size = hidden_size
-        self.mrg = torch.nn.Parameter(torch.tensor([0.1] * n_classes, requires_grad=True, device='cuda', dtype=torch.double))
+        self.version = version
+        self.mrg = torch.nn.Parameter(torch.tensor([0.2] * n_classes, requires_grad=True, device='cuda', dtype=torch.double))
+
         self.alpha = alpha
 
     def forward(self, X, T):
@@ -52,7 +54,8 @@ class Proxy_Anchor_org(nn.Module):
         cos = cos_sim(X, P)  # Calcluate cosine similarity
 
         P_one_hot = binarize(T=T, n_classes=self.n_classes)
-        # P_one_hot[:, -1] = 1
+        if self.version == 'wo_margin':
+            P_one_hot[:, -1] = 1
         N_one_hot = 1 - P_one_hot
 
         pos_exp = torch.exp(-self.alpha * (cos - self.mrg))

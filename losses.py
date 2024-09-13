@@ -49,7 +49,7 @@ def cos_sim(i, j):
 
 
 class Proxy_Anchor(nn.Module):
-    def __init__(self, label_emb, n_classes, hidden_size, alpha=64): #n_classes: known + unknown
+    def __init__(self, label_emb, n_classes, hidden_size, version, alpha=64): #n_classes: known + unknown
         torch.nn.Module.__init__(self)
         # Proxy Anchor Initialization
         if label_emb == None:
@@ -60,7 +60,7 @@ class Proxy_Anchor(nn.Module):
 
         self.n_classes = n_classes
         self.hidden_size = hidden_size
-
+        self.version = version
         self.mrg = torch.tensor(self.proxies)
         self.mrg = torch.nn.Parameter(self.mrg).cuda()
 
@@ -74,7 +74,8 @@ class Proxy_Anchor(nn.Module):
         mrg_P_cos = torch.diag(all_mrg_P_cos)
 
         P_one_hot = binarize(T=T, n_classes=self.n_classes)
-        P_one_hot[:, -1] = 1
+        if self.version != 'wo_shared':
+            P_one_hot[:, -1] = 1
         N_one_hot = 1 - P_one_hot
 
         inner_mask = cos > mrg_P_cos

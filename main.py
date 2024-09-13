@@ -45,7 +45,7 @@ def define_args():
     p.add_argument('--data', type=str, default='BANKING')
     p.add_argument('--model_dir', type=str, default='D:/intent_proxy', help="save model path")
 
-    p.add_argument('--known_cls_ratio', type=float, default=0.5)
+    p.add_argument('--known_cls_ratio', type=float, default=0.25)
     p.add_argument('--lr', type=float, default=2e-5)
     p.add_argument('--clips', type=float, default=0.6, help="clip grad norm")
     p.add_argument('--batch_size', type=int, default=150)
@@ -67,6 +67,8 @@ def define_args():
     p.add_argument('--flag', action='store_true')
     p.add_argument('--old', action='store_true')
     p.add_argument('--select', action='store_true')
+    p.add_argument('--version', type=str, default='new')
+
 
     c = p.parse_args()
     return c
@@ -74,7 +76,7 @@ def define_args():
 
 def main(config):
     if config.wan >= 1:
-        wandb.init(project=config.data,
+        wandb.init(project=config.data+'_variant_test',
                    entity="azxky6645",
                    name=config.name + ', ' + str(config.known_cls_ratio),
                    config=config.__dict__)
@@ -155,13 +157,17 @@ def main(config):
     warmup_rate = 0.1
     label_output = None
     if config.old == True:
-        loss_function = Proxy_Anchor_org(label_output, len(data_train.label_list), config.hidden_size, alpha=config.alpha).cuda()
+        loss_function = Proxy_Anchor_org(label_output, len(data_train.label_list), config.hidden_size, config.version, alpha=config.alpha).cuda()
     else:
-        loss_function = Proxy_Anchor(label_output, len(data_train.label_list), config.hidden_size, alpha=config.alpha).cuda()
+        loss_function = Proxy_Anchor(label_output, len(data_train.label_list), config.hidden_size, config.version, alpha=config.alpha).cuda()
 
-    param_groups = [{'params': model.parameters(), 'lr': float(config.lr) * 1},
-                    {'params': loss_function.proxies, 'lr': float(config.lr) * config.proxy_lr_scale},
-                    {'params': loss_function.mrg, 'lr': float(config.lr) * config.margin_lr_scale}]
+    if config.version == 'org':
+        param_groups = [{'params': model.parameters(), 'lr': float(config.lr) * 1},
+                        {'params': loss_function.parameters(), 'lr': float(config.lr) * config.proxy_lr_scale}]
+    else:
+        param_groups = [{'params': model.parameters(), 'lr': float(config.lr) * 1},
+                        {'params': loss_function.proxies, 'lr': float(config.lr) * config.proxy_lr_scale},
+                        {'params': loss_function.mrg, 'lr': float(config.lr) * config.margin_lr_scale}]
 
     optimizer = optim.AdamW(param_groups, lr=float(config.lr), weight_decay=config.weight_decay)
     scheduler = transformers.get_linear_schedule_with_warmup(optimizer, int(total * warmup_rate), total)

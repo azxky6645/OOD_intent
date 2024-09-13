@@ -22,7 +22,7 @@ class Trainer:
         self.config = config
         pass
 
-    def train_step(self, data, epoch, device):
+    def train_step(self, data, epoch, update_flag, device):
         trn_acc = 0.
         trn_loss = 0.
         trn_f1 = 0.
@@ -31,10 +31,10 @@ class Trainer:
         pred_list = []
 
         with tqdm(total=len(data), desc=f"EPOCH - {epoch} ") as pbar:
-            if self.config.flag == True:
-                x_file = open(os.path.join('embedding_tsv', (self.config.name + '_x_embedding.tsv')), 'w', newline='\n')
+            if self.config.flag == True and update_flag == True:
+                x_file = open(os.path.join('cluster_test', (self.config.data+self.config.name + '_x_embedding.tsv')), 'w', newline='\n')
                 wr = csv.writer(x_file, delimiter='\t')
-                y_file = open(os.path.join('embedding_tsv', (self.config.name + '_y_true.tsv')), 'w', newline='\n')
+                y_file = open(os.path.join('cluster_test', (self.config.data+self.config.name + '_y_true.tsv')), 'w', newline='\n')
                 wr_y = csv.writer(y_file, delimiter='\t')
             for step, batch in enumerate(data):
 
@@ -48,7 +48,10 @@ class Trainer:
                 y = y.to(device)
 
                 x_emb = self.model(x)
-                loss, proxy, margin, p_m_distance, m_pos, m_neg = self.loss_function(x_emb, y)
+                if self.config.old == False:
+                    loss, proxy, margin, p_m_distance, m_pos, m_neg = self.loss_function(x_emb, y)
+                else:
+                    loss, proxy, margin = self.loss_function(x_emb, y)
 
                 #print(proxy)
                 self.optimizer.zero_grad()
@@ -82,7 +85,7 @@ class Trainer:
                 postfix_str += f" Trn loss: {(trn_loss.item() / count):.4f}"
 
                 pbar.set_postfix_str(postfix_str)
-                if self.config.flag == True:
+                if self.config.flag == True and update_flag == True:
                     for x in x_emb:
                         wr.writerow(x.tolist())
 
@@ -97,12 +100,15 @@ class Trainer:
             print('ACCURACY: ', accuracy_score(pred_list, target_list))
             print('F1-score: ', f1_score(pred_list, target_list, average='macro'))
 
-            if self.config.flag == True:
+            if self.config.flag == True and update_flag == True:
                 x_file.close()
                 y_file.close()
-        return accuracy_score(pred_list, target_list), f1_score(pred_list, target_list, average='macro'), trn_loss/count, learning_rate, p_m_distance, m_pos, m_neg
+        if self.config.old == False:
+            return accuracy_score(pred_list, target_list), f1_score(pred_list, target_list, average='macro'), trn_loss/count, learning_rate, p_m_distance, m_pos, m_neg
+        else:
+            return accuracy_score(pred_list, target_list), f1_score(pred_list, target_list, average='macro'), trn_loss / count, learning_rate
 
-    def validation_step(self, data, epoch, device):
+    def validation_step(self, data, epoch, update_flag, device):
         valid_acc = 0.
         valid_f1 = 0.
         valid_loss = 0.
@@ -117,10 +123,10 @@ class Trainer:
 
         with torch.no_grad():
             with tqdm(total=len(data), desc=f"EPOCH - {epoch} ") as pbar:
-                if self.config.flag == True:
-                    x_file = open(os.path.join('embedding_tsv', (self.config.name + '_test_x_embedding.tsv')), 'w', newline='\n')
+                if self.config.flag == True and update_flag == True:
+                    x_file = open(os.path.join('cluster_test', (self.config.data+self.config.name + '_test_x_embedding.tsv')), 'w', newline='\n')
                     wr = csv.writer(x_file, delimiter='\t')
-                    y_file = open(os.path.join('embedding_tsv', (self.config.name + '_test_y_true.tsv')), 'w', newline='\n')
+                    y_file = open(os.path.join('cluster_test', (self.config.data+self.config.name + '_test_y_true.tsv')), 'w', newline='\n')
                     wr_y = csv.writer(y_file, delimiter='\t')
                 for step, (x, y) in enumerate(data):
 
@@ -130,7 +136,11 @@ class Trainer:
                     y = y.to(device)
 
                     x_emb = self.model(x)
-                    loss, proxy, margin, p_m_distance, m_pos, m_neg = self.loss_function(x_emb, y)
+
+                    if self.config.old == False:
+                        loss, proxy, margin, p_m_distance, m_pos, m_neg = self.loss_function(x_emb, y)
+                    else:
+                        loss, proxy, margin = self.loss_function(x_emb, y)
 
                     y_pred = proxy_distance_with_margin(x_emb, proxy, margin, self.config.old)
                     # y_pred = pred_nearest_proxy(x_emb, proxy)
@@ -148,7 +158,7 @@ class Trainer:
                     postfix_str += f" valid f1: {valid_f1 / valid_count:1.4f}, "
                     postfix_str += f" valid loss: {valid_loss.item() / valid_count:.4f}"
                     pbar.set_postfix_str(postfix_str)
-                    if self.config.flag == True:
+                    if self.config.flag == True and update_flag == True:
                         for x in x_emb:
                             wr.writerow(x.tolist())
 
@@ -178,7 +188,7 @@ class Trainer:
                 print('IND-F1: ', IND_f1)
                 print('OOD-F1: ', OOD_f1)
 
-                if self.config.flag == True:
+                if self.config.flag == True and update_flag == True:
                     x_file.close()
                     y_file.close()
 
@@ -193,6 +203,7 @@ class Trainer:
         best_test_f1_score = 0.
         best_test_f1_ind_score = 0.
         best_test_f1_ood_score = 0.
+        update_flag = True
 
         self.model.zero_grad()
         self.optimizer.zero_grad()
@@ -204,10 +215,13 @@ class Trainer:
                 if epoch == self.config.warm:
                     for param in list(set(self.model.parameters())):
                         param.requires_grad = True
+            if self.config.old == False:
+                train_accuracy, train_f1, train_loss, learning_rate, p_m_distance, m_pos, m_neg  = self.train_step(train_dataloader, epoch, update_flag, device)
+            else:
+                train_accuracy, train_f1, train_loss, learning_rate = self.train_step(train_dataloader, epoch, update_flag, device)
 
-            train_accuracy, train_f1, train_loss, learning_rate, p_m_distance, m_pos, m_neg  = self.train_step(train_dataloader, epoch, device)
-            valid_acc, valid_f1, valid_loss, valid_ind_f1, valid_ood_f1 = self.validation_step(valid_dataloader, epoch, device)
-            test_acc, test_f1, test_loss, test_ind_f1, test_ood_f1 = self.validation_step(test_dataloader, epoch, device)
+            valid_acc, valid_f1, valid_loss, valid_ind_f1, valid_ood_f1 = self.validation_step(valid_dataloader, epoch, update_flag, device)
+            test_acc, test_f1, test_loss, test_ind_f1, test_ood_f1 = self.validation_step(test_dataloader, epoch, update_flag, device)
 
             # save model
             if not os.path.exists(os.path.join(self.config.model_dir, self.config.data, str(self.config.known_cls_ratio))):
@@ -222,6 +236,8 @@ class Trainer:
                 best_test_f1_ind_score = test_ind_f1
                 best_test_f1_ood_score = test_ood_f1
 
+                update_flag = True
+
                 model_name = f"{self.config.name}.pt"
                 model_path = os.path.join(self.config.model_dir, self.config.data, str(self.config.known_cls_ratio), model_name)
                 torch.save({
@@ -230,6 +246,9 @@ class Trainer:
                     'proxy': self.loss_function.state_dict(),
                     'known_label_list': train_dataloader.dataset.known_label_list
                 }, model_path)
+
+            else:
+                update_flag = False
 
             if self.config.wan >= 1:
                 wandb.log({
